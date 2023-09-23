@@ -17,15 +17,15 @@ constexpr Color amyskin   = {  29,  25,  40, 255 };
 using std::vector;
 
 constexpr float galaxyRadius = 250;
-constexpr size_t numStars = 1500;
+constexpr size_t numStars = 2000;
 constexpr size_t numGasClumps = 200;
 constexpr size_t numDustClouds = 250;
 constexpr size_t numDarkBodies = 200;
 constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
 constexpr float simulationSpeed = 1.0f;
-Camera camera = { { 0, 0, -galaxyRadius * 2 }, Vector3Zero(), {0, 1, 0}, 90.0f, CAMERA_PERSPECTIVE};
+Camera camera = { { 0, 0, -galaxyRadius * 1.5f }, Vector3Zero(), {0, 1, 0}, 120.0f, CAMERA_PERSPECTIVE};
 
-constexpr float G = 7;
+constexpr float G = 9;
 
 // Solar units
 float StarRadius(float mass)
@@ -107,7 +107,7 @@ struct Star : public Body
         float angle = RandBetween(0.0f, 2.0f * PI);
         float distance = RandBetween(15, galaxyRadius);
         float t = distance / galaxyRadius;
-        float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
+        float eccentricity = RandBetween(-PI / 3, PI / 3) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
         Vector3 offsetFromDisc = Vector3RotateByAxisAngle(startPosition, { 1, 0, 0 }, eccentricity);
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
@@ -152,7 +152,7 @@ struct GasClump : public Body
         float angle = RandBetween(0.0f, 2.0f * PI);
         float distance = RandBetween(20, galaxyRadius);
         float t = distance / galaxyRadius;
-        float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
+        float eccentricity = RandBetween(-PI / 3, PI / 3) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
         Vector3 offsetFromDisc = Vector3RotateByAxisAngle(startPosition, { 1, 0, 0 }, eccentricity);
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
@@ -192,7 +192,7 @@ struct DustCloud : public Body
         float angle = RandBetween(0.0f, 2.0f * PI);
         float distance = RandBetween(galaxyRadius / 2, galaxyRadius);
         float t = distance / galaxyRadius;
-        float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
+        float eccentricity = RandBetween(-PI / 3, PI / 3) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
         Vector3 offsetFromDisc = Vector3RotateByAxisAngle(startPosition, { 1, 0, 0 }, eccentricity);
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
@@ -318,9 +318,6 @@ int main()
         {
             float dt = GetFrameTime() * simulationSpeed;
 
-            constexpr size_t numThreads = 32;
-            std::thread threads[numThreads];
-
             auto updateBody = [&bodies, dt](size_t iStart, size_t iEnd) {
                 for (size_t i = iStart; i < iEnd; ++i)
                 {
@@ -349,18 +346,26 @@ int main()
                 }
             };
 
-            size_t bodiesPerThread = numBodies / numThreads;
-            for (size_t i = 0; i < numThreads; ++i)
+            // Multithread
             {
-                Body* a = bodies[i];
-                size_t start = i * bodiesPerThread;
-                size_t end = start + bodiesPerThread;
-                threads[i] = std::thread(updateBody, start, end);
-            }
+                size_t numThreads = std::thread::hardware_concurrency();
+                if (numThreads == 0) numThreads = 8;
+                std::vector<std::thread> threads;
+                threads.reserve(numThreads);
 
-            for (std::thread& thread : threads)
-            {
-                thread.join();
+                size_t bodiesPerThread = numBodies / numThreads;
+                for (size_t i = 0; i < numThreads; ++i)
+                {
+                    Body* a = bodies[i];
+                    size_t start = i * bodiesPerThread;
+                    size_t end = start + bodiesPerThread;
+                    threads.push_back(std::thread(updateBody, start, end));
+                }
+
+                for (std::thread& thread : threads)
+                {
+                    thread.join();
+                }
             }
 
             for (Body* body : bodies)
