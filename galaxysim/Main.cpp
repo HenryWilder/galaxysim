@@ -17,15 +17,15 @@ constexpr Color amyskin   = {  29,  25,  40, 255 };
 using std::vector;
 
 constexpr float galaxyRadius = 250;
-constexpr size_t numStars = 2000;
-constexpr size_t numGasClumps = 200;
-constexpr size_t numDustClouds = 250;
-constexpr size_t numDarkBodies = 200;
+constexpr size_t numStars = 8192;
+constexpr size_t numGasClumps = 512;
+constexpr size_t numDustClouds = 512;
+constexpr size_t numDarkBodies = 512;
 constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
 constexpr float simulationSpeed = 1.0f;
 Camera camera = { { 0, 0, -galaxyRadius * 1.5f }, Vector3Zero(), {0, 1, 0}, 120.0f, CAMERA_PERSPECTIVE};
 
-constexpr float G = 9;
+constexpr float G = 6;
 
 // Solar units
 float StarRadius(float mass)
@@ -222,14 +222,15 @@ struct DarkBody : public Body
     void Draw() const override
     {
 #if 0
-        DrawCubeV(position, { 2,2,2 }, GREEN);
+        DrawCubeV(position, { 16,16,16 }, GREEN);
+        DrawLine3D(position, Vector3Add(position, velocity), RED);
 #endif
     }
 
     void Randomize() override
     {
         float angle = RandBetween(0.0f, 2.0f * PI);
-        float distance = RandBetween(galaxyRadius / 2, galaxyRadius);
+        float distance = RandBetween(galaxyRadius / 2, galaxyRadius * 1.5f);
         float t = distance / galaxyRadius;
         float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
@@ -244,7 +245,7 @@ struct DarkBody : public Body
 #else
         velocity = Vector3Zero();
 #endif
-        mass = Lerp(50.0f, 100.0f, t);
+        mass = Lerp(500.0f, 1000.0f, t);
     }
 };
 
@@ -274,10 +275,10 @@ int main()
     vector<Body*> bodies;
     bodies.reserve(numBodies);
 
-    srand(2);
+    //srand(2);
 
     // Black hole
-    Star* blackHole = new Star(Vector3Zero(), Vector3Zero(), 4.154e4f, { 0, 0, 0, 255 });
+    Star* blackHole = new Star(Vector3Zero(), Vector3Zero(), 4154, { 0, 0, 0, 255 });
     blackHole->radius = 15.0f;
     bodies.push_back(blackHole);
 
@@ -295,18 +296,19 @@ int main()
     }
 
     bool isSimulationPaused = false;
+    enum class View { Orbit, Front, Side } view = View::Front;
 
     while (!WindowShouldClose())
     {
 #if 1
-        //if (isSimulationPaused)
-        //{
-            UpdateCamera(&camera, CAMERA_ORBITAL);
-        //}
-        //else
-        //{
-        //    camera.position = { 0, 0, -galaxyRadius * 2 };
-        //}
+        switch (view)
+        {
+        case View::Front: camera.position = { 0, 0, galaxyRadius * -1.5f }; break;
+        case View::Side:  camera.position = { galaxyRadius * -1.5f, 0, 0 }; break;
+
+        default:
+        case View::Orbit: UpdateCamera(&camera, CAMERA_ORBITAL); break;
+        }
 #endif
 
         if (IsKeyPressed(KEY_SPACE))
@@ -314,34 +316,49 @@ int main()
             isSimulationPaused = !isSimulationPaused;
         }
 
+        if (IsKeyPressed(KEY_F)) view = View::Front;
+        if (IsKeyPressed(KEY_S)) view = View::Side;
+        if (IsKeyPressed(KEY_O)) view = View::Orbit;
+
         if (!isSimulationPaused)
         {
             float dt = GetFrameTime() * simulationSpeed;
 
-            auto updateBody = [&bodies, dt](size_t iStart, size_t iEnd) {
+            auto updateBody = [&](size_t iStart, size_t iEnd)
+            {
                 for (size_t i = iStart; i < iEnd; ++i)
                 {
                     Body* a = bodies[i];
-                    for (size_t j = i; j < numBodies; ++j)
+
+                    if (a == blackHole)
                     {
-                        Body* b = bodies[j];
-
-                        float distance = Vector3Distance(a->position, b->position);
-
-                        if (distance < 10.0f)
+                        continue;
+                    }
+                    else if (DarkBody* darkmatter = dynamic_cast<DarkBody*>(a))
+                    {
+                        Vector3 newPosition = Vector3RotateByAxisAngle(darkmatter->position, { 0, 0, 1 }, dt * PI / 2);
+                        Vector3 deltaPosition = Vector3Scale(Vector3Subtract(newPosition, darkmatter->position), 4 * Vector3Length(darkmatter->position) / galaxyRadius);
+                        darkmatter->velocity = deltaPosition;
+                    }
+                    else if (a != nullptr)
+                    {
+                        for (Body* b : bodies)
                         {
-                            continue;
+                            float distance = Vector3Distance(a->position, b->position);
+
+                            if (distance < 10.0f)
+                            {
+                                continue;
+                            }
+
+                            float gravity = (G * a->mass * b->mass) / (distance * distance);
+
+                            Vector3 direction = Vector3Normalize(Vector3Subtract(b->position, a->position));
+                            Vector3 force = Vector3Scale(direction, gravity);
+                            Vector3 acceleration = Vector3Scale(force, +dt / a->mass);
+
+                            a->velocity = Vector3Add(a->velocity, acceleration);
                         }
-
-                        float gravity = (G * a->mass * b->mass) / (distance * distance);
-
-                        Vector3 direction = Vector3Normalize(Vector3Subtract(b->position, a->position));
-                        Vector3 force = Vector3Scale(direction, gravity);
-                        Vector3 accelerationA = Vector3Scale(force, +dt / a->mass);
-                        Vector3 accelerationB = Vector3Scale(force, -dt / b->mass);
-
-                        a->velocity = Vector3Add(a->velocity, accelerationA);
-                        b->velocity = Vector3Add(b->velocity, accelerationB);
                     }
                 }
             };
