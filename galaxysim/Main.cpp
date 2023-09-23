@@ -6,10 +6,11 @@
 using std::vector;
 
 constexpr float galaxyRadius = 250;
-constexpr size_t numStars = 1000;
-constexpr size_t numGasClumps = 300;
-constexpr size_t numDustClouds = 300;
-constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds;
+constexpr size_t numStars = 700;
+constexpr size_t numGasClumps = 250;
+constexpr size_t numDustClouds = 250;
+constexpr size_t numDarkBodies = 200;
+constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
 constexpr float simulationSpeed = 1.0f;
 Camera camera = { { 0, 0, -galaxyRadius * 2 }, Vector3Zero(), {0, 1, 0}, 90.0f, CAMERA_PERSPECTIVE};
 
@@ -107,7 +108,8 @@ struct Star : public Body
         velocity = Vector3Zero();
 #endif
         mass = Lerp(8.0f, 0.5f, t);
-        color = WHITE;
+        radius = StarRadius(mass);
+        color = ColorLerp(ColorLerp(SKYBLUE, WHITE, t), ColorLerp(WHITE, PURPLE, t), t);
     }
 };
 
@@ -125,7 +127,7 @@ struct GasClump : public Body
 
     void Draw() const override
     {
-        DrawBillboard(camera, gasTexture, position, mass * 8, color);
+        DrawBillboard(camera, gasTexture, position, mass * 4, color);
     }
 
     void Randomize() override
@@ -146,7 +148,7 @@ struct GasClump : public Body
 #else
         velocity = Vector3Zero();
 #endif
-        mass = Lerp(8, 0.5f, t);
+        mass = Lerp(10, 0.5f, t);
         color = ColorLerp(BLUE, VIOLET, t);
     }
 };
@@ -186,7 +188,46 @@ struct DustCloud : public Body
 #else
         velocity = Vector3Zero();
 #endif
-        mass = 1.0f;
+        mass = Lerp(3.0f, 1.0f, t);
+    }
+};
+
+struct DarkBody : public Body
+{
+    DarkBody() :
+        Body(Vector3Zero(), Vector3Zero(), 0.0f) {}
+
+    DarkBody(Vector3 position, Vector3 velocity, float mass) :
+        Body(position, velocity, mass) {}
+
+    void Draw2D() const override {}
+
+    void Draw() const override
+    {
+#if 0
+        DrawCubeV(position, { 2,2,2 }, GREEN);
+#endif
+    }
+
+    void Randomize() override
+    {
+        float angle = RandBetween(0.0f, 2.0f * PI);
+        float distance = RandBetween(galaxyRadius / 2, galaxyRadius);
+        float t = distance / galaxyRadius;
+        float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
+        Vector3 startPosition = { 0, distance, 0 };
+        Vector3 offsetFromDisc = Vector3RotateByAxisAngle(startPosition, { 1, 0, 0 }, eccentricity);
+        Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
+
+        position = aroundCenter;
+#if 1
+        velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
+#elif 1
+        velocity = { RandBetween(-10, 10), RandBetween(-10, 10), RandBetween(-1, 1) };
+#else
+        velocity = Vector3Zero();
+#endif
+        mass = Lerp(16.0f, 32.0f, t);
     }
 };
 
@@ -222,20 +263,10 @@ int main()
     blackHole->radius = 15.0f;
     bodies.push_back(blackHole);
 
-    for (int i = 0; i < numStars; ++i)
-    {
-        bodies.push_back(new Star());
-    }
-
-    for (int i = 0; i < numGasClumps; ++i)
-    {
-        bodies.push_back(new GasClump());
-    }
-
-    for (int i = 0; i < numDustClouds; ++i)
-    {
-        bodies.push_back(new DustCloud());
-    }
+    for (int i = 0; i < numStars;      ++i) { bodies.push_back(new Star     ()); }
+    for (int i = 0; i < numGasClumps;  ++i) { bodies.push_back(new GasClump ()); }
+    for (int i = 0; i < numDustClouds; ++i) { bodies.push_back(new DustCloud()); }
+    for (int i = 0; i < numDarkBodies; ++i) { bodies.push_back(new DarkBody ()); }
 
     for (Body* body : bodies)
     {
@@ -250,14 +281,14 @@ int main()
     while (!WindowShouldClose())
     {
 #if 1
-        if (isSimulationPaused)
-        {
+        //if (isSimulationPaused)
+        //{
             UpdateCamera(&camera, CAMERA_ORBITAL);
-        }
-        else
-        {
-            camera.position = { 0, 0, -galaxyRadius * 2 };
-        }
+        //}
+        //else
+        //{
+        //    camera.position = { 0, 0, -galaxyRadius * 2 };
+        //}
 #endif
 
         if (IsKeyPressed(KEY_SPACE))
