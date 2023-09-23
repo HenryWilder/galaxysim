@@ -111,6 +111,15 @@ struct Star : public Body
         mass = Lerp(8.0f, 0.5f, t);
         radius = StarRadius(mass);
         color = ColorLerp(ColorLerp(amyblue, WHITE, t), ColorLerp(WHITE, amypurple, t), t);
+
+        if (RandBetween(0, 1) < 0.01f)
+        {
+            color = WHITE;
+        }
+        if (RandBetween(0, 1) < 0.0001f)
+        {
+            color = RED;
+        }
     }
 };
 
@@ -197,7 +206,7 @@ struct DarkBody : public Body
     void Draw() const override
     {
 #if 0 // Show dark matter
-        DrawSphere(position, mass / 8, { 0, 127, 0, 63 });
+        DrawSphere(position, mass, { 0, 127, 0, 63 });
 #endif
 #if 0 // Show dark matter velocity
         DrawLine3D(position, Vector3Add(position, velocity), RED);
@@ -222,9 +231,13 @@ struct DarkBody : public Body
 
 int main()
 {
-    InitWindow(1000, 1000, "Galaxy Sim");
+    int windowWidth = 1280;
+    int windowHeight = 720;
+    InitWindow(windowWidth, windowHeight, "Galaxy Sim");
 
     SetTargetFPS(0);
+
+    Texture background;
 
     {
         Image img;
@@ -240,6 +253,10 @@ int main()
         img = GenImagePerlinNoise(32, 32, 0, 0, 20);
         ImageAlphaMask(&img, img);
         dustTexture = LoadTextureFromImage(img);
+        UnloadImage(img);
+
+        img = GenImagePerlinNoise(windowWidth, windowWidth, 0, 0, 10);
+        background = LoadTextureFromImage(img);
         UnloadImage(img);
     }
 
@@ -265,17 +282,38 @@ int main()
     }
 
     bool isSimulationPaused = false;
-    enum class View { Orbit, Front, Side } view = View::Front;
+    enum class View { Orbit, Front, Side, Star } view = View::Front;
+    size_t observedStar = 0;
 
     while (!WindowShouldClose())
     {
         switch (view)
         {
-        case View::Front: camera.position = { 0, 0, galaxyRadius * -1.5f }; break;
-        case View::Side:  camera.position = { galaxyRadius * -1.5f, 0, 0 }; break;
+        case View::Front:
+            camera.position = { 0, 0, galaxyRadius * -1.5f };
+            camera.up = { 0, 1, 0 };
+            camera.fovy = 120;
+            break;
+        case View::Side:
+            camera.position = { galaxyRadius * -1.5f, 0, 0 };
+            camera.up = { 0, 1, 0 };
+            camera.fovy = 120;
+            break;
+        case View::Star:
+        {
+            Body* body = bodies[observedStar];
+            camera.position = body->position;
+            camera.up = Vector3RotateByAxisAngle(body->position, { 0, 0, 1, }, PI / 2);
+            camera.fovy = 45;
+        }
+            break;
 
         default:
-        case View::Orbit: UpdateCamera(&camera, CAMERA_ORBITAL); break;
+        case View::Orbit:
+            UpdateCamera(&camera, CAMERA_ORBITAL);
+            camera.up = { 0, 1, 0 };
+            camera.fovy = 120;
+            break;
         }
 
         if (IsKeyPressed(KEY_SPACE))
@@ -286,6 +324,8 @@ int main()
         if (IsKeyPressed(KEY_F)) view = View::Front;
         if (IsKeyPressed(KEY_S)) view = View::Side;
         if (IsKeyPressed(KEY_O)) view = View::Orbit;
+        if (IsKeyPressed(KEY_UP))   { view = View::Star; ++observedStar %= numStars; }
+        if (IsKeyPressed(KEY_DOWN)) { view = View::Star; --observedStar %= numStars; }
 
         if (!isSimulationPaused)
         {
@@ -355,8 +395,8 @@ int main()
 
                 if (DarkBody* darkmatter = dynamic_cast<DarkBody*>(body))
                 {
-                    float t = Vector3Length(darkmatter->position) / galaxyRadius;
-                    Vector3 newPosition = Vector3RotateByAxisAngle(darkmatter->position, { 0, 0, 1 }, (1 - t) * dt * PI / 8);
+                    float t = Vector3Length(darkmatter->position) / (galaxyRadius * 1.5f);
+                    Vector3 newPosition = Vector3RotateByAxisAngle(darkmatter->position, { 0, 0, 1 }, (1 - powf(t, 2.0f)) * dt * PI / 8);
                     darkmatter->velocity = Vector3Subtract(newPosition, darkmatter->position); // Makes the debug look better
                     darkmatter->position = newPosition;
                     continue;
@@ -384,6 +424,8 @@ int main()
 
             ClearBackground(BLACK);
 
+            DrawTexture(background, 0, 0, ColorLerp(BLACK, amypurple, 0.1f));
+
             // Workaround for far plane cull
             // Still no fix when the body simply doesn't look right as a point (like gas or dust)
             for (const Body* body : bodies)
@@ -398,11 +440,24 @@ int main()
             }
             EndMode3D();
 
+#if 0 // black hole crosshair
+            //if (view == View::Star)
+            {
+                DrawRing(Vector2Add(GetWorldToScreen(Vector3Zero(), camera), { 1,1 }), 2, 4, 0, 360, 36, BLACK);
+                DrawRing(GetWorldToScreen(Vector3Zero(), camera), 2, 4, 0, 360, 36, RED);
+            }
+#endif
+
             DrawFPS(0,0);
 
             if (isSimulationPaused)
             {
                 DrawText("PAUSED", 0, 30, 8, WHITE);
+            }
+
+            if (observedStar == 0 && view == View::Star)
+            {
+                DrawText("WARNING: You are inside a black hole.", 0, 40, 8, YELLOW);
             }
 
         EndDrawing();
@@ -411,6 +466,7 @@ int main()
     UnloadTexture(starTexture);
     UnloadTexture(gasTexture);
     UnloadTexture(dustTexture);
+    UnloadTexture(background);
 
     CloseWindow();
 }
