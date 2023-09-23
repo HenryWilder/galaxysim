@@ -18,9 +18,9 @@ using std::vector;
 
 constexpr float galaxyRadius = 250;
 constexpr size_t numStars = 8192;
-constexpr size_t numGasClumps = 512;
+constexpr size_t numGasClumps = 1024;
 constexpr size_t numDustClouds = 512;
-constexpr size_t numDarkBodies = 1025;
+constexpr size_t numDarkBodies = 1024;
 constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
 constexpr float simulationSpeed = 1.0f;
 Camera camera = { { 0, 0, -galaxyRadius * 1.5f }, Vector3Zero(), {0, 1, 0}, 120.0f, CAMERA_PERSPECTIVE};
@@ -46,6 +46,11 @@ Color ColorLerp(Color a, Color b, float amount)
         (unsigned char)Lerp(a.b, b.b, amount),
         (unsigned char)Lerp(a.a, b.a, amount)
     };
+}
+
+void DrawCustomBillboard(Camera3D camera, Texture2D texture, Vector3 position, float size, Color tint)
+{
+    DrawBillboardPro(camera, texture, { 0, 0, (float)texture.width, (float)texture.height }, position, camera.up, { size, size }, { 0.5f, 0.5f }, 0.0f, tint);
 }
 
 Texture starTexture;
@@ -92,7 +97,7 @@ struct Star : public Body
         DrawLine3D(position, Vector3Add(position, Vector3Scale(velocity, GetFrameTime() * simulationSpeed)), { 0, 127, 0, 64 });
 #endif
         //BeginBlendMode(BLEND_ADD_COLORS);
-        DrawBillboard(camera, starTexture, position, radius, color);
+        DrawCustomBillboard(camera, starTexture, position, radius, color);
         //EndBlendMode();
     }
 
@@ -141,7 +146,7 @@ struct GasClump : public Body
         Color color = ColorLerp(
             ColorLerp(ColorLerp(     WHITE, amyhair[0], t), ColorLerp(amyhair[0], amyhair[1], t), t),
             ColorLerp(ColorLerp(amyhair[1], amyhair[2], t), ColorLerp(amyhair[2], amyhair[3], t), t), t);
-        DrawBillboard(camera, gasTexture, position, mass * 4, color);
+        DrawCustomBillboard(camera, gasTexture, position, mass * 4, color);
         //EndBlendMode();
     }
 
@@ -150,7 +155,7 @@ struct GasClump : public Body
         float angle = RandBetween(0.0f, 2.0f * PI);
         float distance = RandBetween(20, galaxyRadius);
         float t = distance / galaxyRadius;
-        float eccentricity = RandBetween(-PI / 3, PI / 3) * (1 - t);
+        float eccentricity = RandBetween(-PI / 1, PI / 1) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
         Vector3 offsetFromDisc = Vector3RotateByAxisAngle(startPosition, { 1, 0, 0 }, eccentricity);
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
@@ -174,7 +179,7 @@ struct DustCloud : public Body
     void Draw() const override
     {
         float t = Clamp(Vector3Length(position) / galaxyRadius, 0.0f, 1.0f);
-        DrawBillboard(camera, dustTexture, position, mass * 32, ColorLerp(amyfur, amyskin, t));
+        DrawCustomBillboard(camera, dustTexture, position, mass * 32, ColorLerp(amyfur, amyskin, t));
     }
 
     void Randomize() override
@@ -296,14 +301,14 @@ int main()
             break;
         case View::Side:
             camera.position = { galaxyRadius * -1.5f, 0, 0 };
-            camera.up = { 0, 1, 0 };
+            camera.up = Vector3Normalize({ 0, 1, 1 });
             camera.fovy = 120;
             break;
         case View::Star:
         {
             Body* body = bodies[observedStar];
             camera.position = body->position;
-            camera.up = Vector3RotateByAxisAngle(body->position, { 0, 0, 1, }, PI / 2);
+            camera.up = Vector3Normalize(Vector3RotateByAxisAngle(body->position, { 0, 0, 1, }, PI / 2));
             camera.fovy = 45;
         }
             break;
