@@ -3,11 +3,22 @@
 #include <vector>
 #include <thread>
 
+constexpr Color amyblue   = {  38, 144, 252, 255 };
+constexpr Color amypurple = { 116,  26, 248, 255 };
+constexpr Color amyhair[4] = {
+    {  32, 142, 249, 255 },
+    {  32,  93, 255, 255 },
+    { 107,  28, 252, 255 },
+    { 121,  23, 207, 255 },
+};
+constexpr Color amyfur    = {  41,  53,  48, 255 };
+constexpr Color amyskin   = {  29,  25,  40, 255 };
+
 using std::vector;
 
 constexpr float galaxyRadius = 250;
-constexpr size_t numStars = 700;
-constexpr size_t numGasClumps = 250;
+constexpr size_t numStars = 1500;
+constexpr size_t numGasClumps = 200;
 constexpr size_t numDustClouds = 250;
 constexpr size_t numDarkBodies = 200;
 constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
@@ -80,13 +91,15 @@ struct Star : public Body
 #if 0
         DrawLine3D(Vector3Zero(), position, MAGENTA); // Line from center (used for locating)
 #endif
-#if 1
+#if 0
         if (IsKeyDown(KEY_V))
         {
             DrawLine3D(position, Vector3Add(position, Vector3Scale(velocity, GetFrameTime() * simulationSpeed)), { 0, 127, 0, 64 }); // Velocity
         }
 #endif
+        //BeginBlendMode(BLEND_ADD_COLORS);
         DrawBillboard(camera, starTexture, position, radius, color);
+        //EndBlendMode();
     }
 
     void Randomize() override
@@ -109,25 +122,29 @@ struct Star : public Body
 #endif
         mass = Lerp(8.0f, 0.5f, t);
         radius = StarRadius(mass);
-        color = ColorLerp(ColorLerp(SKYBLUE, WHITE, t), ColorLerp(WHITE, PURPLE, t), t);
+        color = ColorLerp(ColorLerp(amyblue, WHITE, t), ColorLerp(WHITE, amypurple, t), t);
     }
 };
 
 struct GasClump : public Body
 {
     GasClump() :
-        Body(Vector3Zero(), Vector3Zero(), 0.0f), color(BLACK) {}
+        Body(Vector3Zero(), Vector3Zero(), 0.0f) {}
 
     GasClump(Vector3 position, Vector3 velocity, float mass, Color color) :
-        Body(position, velocity, mass), color(color) {}
-
-    Color color;
+        Body(position, velocity, mass) {}
 
     void Draw2D() const override {}
 
     void Draw() const override
     {
+        //BeginBlendMode(BLEND_ADDITIVE);
+        float t = Clamp(Vector3Length(position) / galaxyRadius, 0, 1);
+        Color color = ColorLerp(
+            ColorLerp(ColorLerp(     WHITE, amyhair[0], t), ColorLerp(amyhair[0], amyhair[1], t), t),
+            ColorLerp(ColorLerp(amyhair[1], amyhair[2], t), ColorLerp(amyhair[2], amyhair[3], t), t), t);
         DrawBillboard(camera, gasTexture, position, mass * 4, color);
+        //EndBlendMode();
     }
 
     void Randomize() override
@@ -149,7 +166,6 @@ struct GasClump : public Body
         velocity = Vector3Zero();
 #endif
         mass = Lerp(10, 0.5f, t);
-        color = ColorLerp(BLUE, VIOLET, t);
     }
 };
 
@@ -165,15 +181,16 @@ struct DustCloud : public Body
 
     void Draw() const override
     {
-        BeginBlendMode(BLEND_MULTIPLIED);
-        DrawBillboard(camera, dustTexture, position, mass * 32, WHITE);
-        EndBlendMode();
+        //BeginBlendMode(BLEND_MULTIPLIED);
+        float t = Clamp(Vector3Length(position) / galaxyRadius, 0.0f, 1.0f);
+        DrawBillboard(camera, dustTexture, position, mass * 32, ColorLerp(amyfur, amyskin, t));
+        //EndBlendMode();
     }
 
     void Randomize() override
     {
         float angle = RandBetween(0.0f, 2.0f * PI);
-        float distance = RandBetween(15, galaxyRadius);
+        float distance = RandBetween(galaxyRadius / 2, galaxyRadius);
         float t = distance / galaxyRadius;
         float eccentricity = RandBetween(-PI / 8, PI / 8) * (1 - t);
         Vector3 startPosition = { 0, distance, 0 };
@@ -227,7 +244,7 @@ struct DarkBody : public Body
 #else
         velocity = Vector3Zero();
 #endif
-        mass = Lerp(16.0f, 32.0f, t);
+        mass = Lerp(50.0f, 100.0f, t);
     }
 };
 
@@ -240,7 +257,7 @@ int main()
     {
         Image img;
 
-        img = GenImageColor(1, 1, WHITE);
+        img = GenImageColor(64, 64, WHITE);
         starTexture = LoadTextureFromImage(img);
         UnloadImage(img);
 
@@ -249,6 +266,7 @@ int main()
         UnloadImage(img);
 
         img = GenImagePerlinNoise(32, 32, 0, 0, 20);
+        ImageAlphaMask(&img, img);
         dustTexture = LoadTextureFromImage(img);
         UnloadImage(img);
     }
@@ -348,7 +366,12 @@ int main()
             for (Body* body : bodies)
             {
                 body->position = Vector3Subtract(Vector3Add(body->position, Vector3Scale(body->velocity, dt)), blackHole->position);
-                if (Vector3Distance(Vector3Zero(), body->position) > galaxyRadius * 2)
+                if (Vector3Length(body->position) > galaxyRadius * 2)
+                {
+                    body->Randomize();
+                }
+                
+                if (dynamic_cast<DustCloud*>(body) && Vector3Length(body->position) < galaxyRadius / 3)
                 {
                     body->Randomize();
                 }
