@@ -1,7 +1,9 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <vector>
+#include <string>
 #include <thread>
+#include <fstream>
 
 constexpr Color amyblue   = {  38, 144, 252, 255 };
 constexpr Color amypurple = { 116,  26, 248, 255 };
@@ -70,6 +72,7 @@ struct Body
     virtual void Draw() const = 0;
 
     virtual void Randomize() = 0;
+    virtual Color GetColor() const = 0;
 };
 
 struct Star : public Body
@@ -126,6 +129,11 @@ struct Star : public Body
             color = RED;
         }
     }
+
+    Color GetColor() const override
+    {
+        return color;
+    }
 };
 
 struct GasClump : public Body
@@ -142,11 +150,7 @@ struct GasClump : public Body
     {
         // additive blending makes the blue turn green :c
         //BeginBlendMode(BLEND_ADDITIVE);
-        float t = Clamp(Vector3Length(position) / galaxyRadius, 0, 1);
-        Color color = ColorLerp(
-            ColorLerp(ColorLerp(     WHITE, amyhair[0], t), ColorLerp(amyhair[0], amyhair[1], t), t),
-            ColorLerp(ColorLerp(amyhair[1], amyhair[2], t), ColorLerp(amyhair[2], amyhair[3], t), t), t);
-        DrawCustomBillboard(camera, gasTexture, position, mass * 4, color);
+        DrawCustomBillboard(camera, gasTexture, position, mass * 4, GetColor());
         //EndBlendMode();
     }
 
@@ -164,6 +168,14 @@ struct GasClump : public Body
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
         mass = Lerp(10, 0.5f, t);
     }
+
+    Color GetColor() const override
+    {
+        float t = Clamp(Vector3Length(position) / galaxyRadius, 0, 1);
+        return ColorLerp(
+            ColorLerp(ColorLerp(     WHITE, amyhair[0], t), ColorLerp(amyhair[0], amyhair[1], t), t),
+            ColorLerp(ColorLerp(amyhair[1], amyhair[2], t), ColorLerp(amyhair[2], amyhair[3], t), t), t);
+    }
 };
 
 struct DustCloud : public Body
@@ -178,8 +190,7 @@ struct DustCloud : public Body
 
     void Draw() const override
     {
-        float t = Clamp(Vector3Length(position) / galaxyRadius, 0.0f, 1.0f);
-        DrawCustomBillboard(camera, dustTexture, position, mass * 32, ColorLerp(amyfur, amyskin, t));
+        DrawCustomBillboard(camera, dustTexture, position, mass * 32, GetColor());
     }
 
     void Randomize() override
@@ -195,6 +206,12 @@ struct DustCloud : public Body
         position = aroundCenter;
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
         mass = Lerp(3.0f, 1.0f, t);
+    }
+
+    Color GetColor() const override
+    {
+        float t = Clamp(Vector3Length(position) / galaxyRadius, 0.0f, 1.0f);
+        return ColorLerp(amyfur, amyskin, t);
     }
 };
 
@@ -232,7 +249,40 @@ struct DarkBody : public Body
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
         mass = Lerp(20, 30.0f, t);
     }
+
+    Color GetColor() const override
+    {
+        return MAGENTA; // Should not be drawn
+    }
 };
+
+void Export(const vector<Body*>& bodies)
+{
+    using std::string;
+    string code = "<svg viewBox=\"0 0 1280 720\" xmlns=\"http://www.w3.org/2000/svg\">\n";
+
+    for (Body* body : bodies)
+    {
+        if (dynamic_cast<DarkBody*>(body))
+        {
+            continue;
+        }
+        else if (body != nullptr)
+        {
+            Vector2 screenPosition = GetWorldToScreen(body->position, camera);
+
+            Color color = body->GetColor();
+            code += TextFormat("\t<rect x=\"%.0f\" y=\"%.0f\" width=\"1\" height=\"1\" fill=\"rgba(%d, %d, %d, 1.0)\" />\n", // todo: screen size
+                screenPosition.x, screenPosition.y, color.r, color.g, color.b);
+        }
+    }
+
+    code += "</svg>";
+
+    std::ofstream file("galaxy.svg");
+    file << code;
+    file.close();
+}
 
 int main()
 {
@@ -300,7 +350,7 @@ int main()
             camera.fovy = 120;
             break;
         case View::Side:
-            camera.position = { galaxyRadius * -1.5f, 0, 0 };
+            camera.position = Vector3Scale(Vector3Normalize({ 1, 0, 0 }), galaxyRadius * -1.5f);
             camera.up = Vector3Normalize({ 0, 1, 1 });
             camera.fovy = 120;
             break;
@@ -331,6 +381,7 @@ int main()
         if (IsKeyPressed(KEY_O)) view = View::Orbit;
         if (IsKeyPressed(KEY_UP))   { view = View::Star; ++observedStar %= numStars; }
         if (IsKeyPressed(KEY_DOWN)) { view = View::Star; --observedStar %= numStars; }
+        if (IsKeyPressed(KEY_ENTER)) { Export(bodies); }
 
         if (!isSimulationPaused)
         {
