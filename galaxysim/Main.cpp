@@ -20,7 +20,7 @@ constexpr float galaxyRadius = 250;
 constexpr size_t numStars = 8192;
 constexpr size_t numGasClumps = 512;
 constexpr size_t numDustClouds = 512;
-constexpr size_t numDarkBodies = 512;
+constexpr size_t numDarkBodies = 1025;
 constexpr size_t numBodies = 1 + numStars + numGasClumps + numDustClouds + numDarkBodies;
 constexpr float simulationSpeed = 1.0f;
 Camera camera = { { 0, 0, -galaxyRadius * 1.5f }, Vector3Zero(), {0, 1, 0}, 120.0f, CAMERA_PERSPECTIVE};
@@ -88,14 +88,8 @@ struct Star : public Body
 
     void Draw() const override
     {
-#if 0
-        DrawLine3D(Vector3Zero(), position, MAGENTA); // Line from center (used for locating)
-#endif
-#if 0
-        if (IsKeyDown(KEY_V))
-        {
-            DrawLine3D(position, Vector3Add(position, Vector3Scale(velocity, GetFrameTime() * simulationSpeed)), { 0, 127, 0, 64 }); // Velocity
-        }
+#if 0 // Show velocity
+        DrawLine3D(position, Vector3Add(position, Vector3Scale(velocity, GetFrameTime() * simulationSpeed)), { 0, 127, 0, 64 });
 #endif
         //BeginBlendMode(BLEND_ADD_COLORS);
         DrawBillboard(camera, starTexture, position, radius, color);
@@ -113,13 +107,7 @@ struct Star : public Body
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
 
         position = aroundCenter;
-#if 1
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
-#elif 1
-        velocity = { RandBetween(-10, 10), RandBetween(-10, 10), RandBetween(-1, 1) };
-#else
-        velocity = Vector3Zero();
-#endif
         mass = Lerp(8.0f, 0.5f, t);
         radius = StarRadius(mass);
         color = ColorLerp(ColorLerp(amyblue, WHITE, t), ColorLerp(WHITE, amypurple, t), t);
@@ -138,6 +126,7 @@ struct GasClump : public Body
 
     void Draw() const override
     {
+        // additive blending makes the blue turn green :c
         //BeginBlendMode(BLEND_ADDITIVE);
         float t = Clamp(Vector3Length(position) / galaxyRadius, 0, 1);
         Color color = ColorLerp(
@@ -158,13 +147,7 @@ struct GasClump : public Body
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
 
         position = aroundCenter;
-#if 1
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
-#elif 1
-        velocity = { RandBetween(-10, 10), RandBetween(-10, 10), RandBetween(-1, 1) };
-#else
-        velocity = Vector3Zero();
-#endif
         mass = Lerp(10, 0.5f, t);
     }
 };
@@ -181,10 +164,8 @@ struct DustCloud : public Body
 
     void Draw() const override
     {
-        //BeginBlendMode(BLEND_MULTIPLIED);
         float t = Clamp(Vector3Length(position) / galaxyRadius, 0.0f, 1.0f);
         DrawBillboard(camera, dustTexture, position, mass * 32, ColorLerp(amyfur, amyskin, t));
-        //EndBlendMode();
     }
 
     void Randomize() override
@@ -198,13 +179,7 @@ struct DustCloud : public Body
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
 
         position = aroundCenter;
-#if 1
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
-#elif 1
-        velocity = { RandBetween(-10, 10), RandBetween(-10, 10), RandBetween(-1, 1) };
-#else
-        velocity = Vector3Zero();
-#endif
         mass = Lerp(3.0f, 1.0f, t);
     }
 };
@@ -221,8 +196,10 @@ struct DarkBody : public Body
 
     void Draw() const override
     {
-#if 0
-        DrawCubeV(position, { 16,16,16 }, GREEN);
+#if 0 // Show dark matter
+        DrawSphere(position, mass / 8, { 0, 127, 0, 63 });
+#endif
+#if 0 // Show dark matter velocity
         DrawLine3D(position, Vector3Add(position, velocity), RED);
 #endif
     }
@@ -238,20 +215,14 @@ struct DarkBody : public Body
         Vector3 aroundCenter = Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle);
 
         position = aroundCenter;
-#if 1
         velocity = Vector3RotateByAxisAngle(Vector3Scale(Vector3RotateByAxisAngle(offsetFromDisc, { 0, 0, 1 }, angle), 0.25f), { 0, 0, 1 }, PI / 3);
-#elif 1
-        velocity = { RandBetween(-10, 10), RandBetween(-10, 10), RandBetween(-1, 1) };
-#else
-        velocity = Vector3Zero();
-#endif
-        mass = Lerp(500.0f, 1000.0f, t);
+        mass = Lerp(20, 30.0f, t);
     }
 };
 
 int main()
 {
-    InitWindow(720, 720, "Galaxy Sim");
+    InitWindow(1000, 1000, "Galaxy Sim");
 
     SetTargetFPS(0);
 
@@ -279,7 +250,7 @@ int main()
 
     // Black hole
     Star* blackHole = new Star(Vector3Zero(), Vector3Zero(), 4154, { 0, 0, 0, 255 });
-    blackHole->radius = 15.0f;
+    blackHole->radius = 15.0f; // black hole is tiny despite mass
     bodies.push_back(blackHole);
 
     for (int i = 0; i < numStars;      ++i) { bodies.push_back(new Star     ()); }
@@ -287,12 +258,10 @@ int main()
     for (int i = 0; i < numDustClouds; ++i) { bodies.push_back(new DustCloud()); }
     for (int i = 0; i < numDarkBodies; ++i) { bodies.push_back(new DarkBody ()); }
 
-    for (Body* body : bodies)
+    // Skips black hole
+    for (size_t i = 1; i < numBodies; ++i)
     {
-        if (body != blackHole)
-        {
-            body->Randomize();
-        }
+        bodies[i]->Randomize();
     }
 
     bool isSimulationPaused = false;
@@ -300,7 +269,6 @@ int main()
 
     while (!WindowShouldClose())
     {
-#if 1
         switch (view)
         {
         case View::Front: camera.position = { 0, 0, galaxyRadius * -1.5f }; break;
@@ -309,7 +277,6 @@ int main()
         default:
         case View::Orbit: UpdateCamera(&camera, CAMERA_ORBITAL); break;
         }
-#endif
 
         if (IsKeyPressed(KEY_SPACE))
         {
@@ -330,15 +297,10 @@ int main()
                 {
                     Body* a = bodies[i];
 
-                    if (a == blackHole)
+                    // Skip black holes and darkmatter
+                    if (a == blackHole || dynamic_cast<DarkBody*>(a))
                     {
                         continue;
-                    }
-                    else if (DarkBody* darkmatter = dynamic_cast<DarkBody*>(a))
-                    {
-                        Vector3 newPosition = Vector3RotateByAxisAngle(darkmatter->position, { 0, 0, 1 }, dt * PI / 2);
-                        Vector3 deltaPosition = Vector3Scale(Vector3Subtract(newPosition, darkmatter->position), 4 * Vector3Length(darkmatter->position) / galaxyRadius);
-                        darkmatter->velocity = deltaPosition;
                     }
                     else if (a != nullptr)
                     {
@@ -346,7 +308,8 @@ int main()
                         {
                             float distance = Vector3Distance(a->position, b->position);
 
-                            if (distance < 10.0f)
+                            // Skip (prbably) colliding
+                            if (distance < 1.0f)
                             {
                                 continue;
                             }
@@ -385,17 +348,34 @@ int main()
                 }
             }
 
-            for (Body* body : bodies)
+            // Skips black hole
+            for (size_t i = 1; i < numBodies; ++i)
             {
-                body->position = Vector3Subtract(Vector3Add(body->position, Vector3Scale(body->velocity, dt)), blackHole->position);
-                if (Vector3Length(body->position) > galaxyRadius * 2)
+                Body* body = bodies[i];
+
+                if (DarkBody* darkmatter = dynamic_cast<DarkBody*>(body))
                 {
-                    body->Randomize();
+                    float t = Vector3Length(darkmatter->position) / galaxyRadius;
+                    Vector3 newPosition = Vector3RotateByAxisAngle(darkmatter->position, { 0, 0, 1 }, (1 - t) * dt * PI / 8);
+                    darkmatter->velocity = Vector3Subtract(newPosition, darkmatter->position); // Makes the debug look better
+                    darkmatter->position = newPosition;
+                    continue;
                 }
-                
-                if (dynamic_cast<DustCloud*>(body) && Vector3Length(body->position) < galaxyRadius / 3)
+                else if (body != nullptr) // I hate that I have to put this here for the compiler's sake.
                 {
-                    body->Randomize();
+                    body->position = Vector3Add(body->position, Vector3Scale(body->velocity, dt));
+
+                    // Bodies beyond the galaxy get culled and reused
+                    if (Vector3Length(body->position) > galaxyRadius * 2)
+                    {
+                        body->Randomize();
+                    }
+
+                    // Dust clouds burn up in the galactic core
+                    if (dynamic_cast<DustCloud*>(body) && Vector3Length(body->position) < galaxyRadius / 3)
+                    {
+                        body->Randomize();
+                    }
                 }
             }
         }
@@ -404,6 +384,8 @@ int main()
 
             ClearBackground(BLACK);
 
+            // Workaround for far plane cull
+            // Still no fix when the body simply doesn't look right as a point (like gas or dust)
             for (const Body* body : bodies)
             {
                 body->Draw2D();
